@@ -14,11 +14,10 @@ void Terminal::size() {
     throw std::runtime_error("failed to find window size");
 } else {
     m_cols = ws.ws_col;
-    m_rows = ws.ws_row;
+    m_rows = ws.ws_row - 1; // Leave last row for status bar
   }
 }
 
-#include <iostream>
 void Terminal::disable_raw() {
     if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &original) == -1) 
         throw std::runtime_error("failed to set attribute");
