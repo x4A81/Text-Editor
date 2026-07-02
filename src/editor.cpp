@@ -1,4 +1,5 @@
 #include "../include/editor.hpp"
+#include "../include/gap_buffer.hpp"
 #include <unistd.h>
 #include <stdexcept>
 #include <fstream>
@@ -9,8 +10,10 @@
 using enum Keys;
 
 void Editor::run() {
+    running = true;
+    g.go_to(0);
     while (running) {
-        update_text_lines();
+        update_text_lines(g.to_string());
         draw();
         process_key(t.read_key());
     }
@@ -24,6 +27,32 @@ void Editor::open_file(const std::string file_name) {
     buf << file.rdbuf();
     text = buf.str();
     file.close();
+    g.load_text(text);
+}
+
+void Editor::save_file() {
+    if (m_file_name.empty()) m_file_name = "New file.txt";
+    std::ofstream file(m_file_name);
+    if (!file)
+        throw std::runtime_error("file didn't open");
+    std::string t = g.to_string();
+    file << t;
+    if (!file)
+        throw std::runtime_error("error writing file");
+        
+    m_status_msg = std::to_string(t.size()) + " bytes written to disk.";
+    dirty = false;
+}
+
+size_t Editor::pos() {
+    size_t index = 0;
+
+    for (int i = 0; i < m_cursorY; ++i)
+        index += editor_lines[i].size() + 1; // + '\n'
+
+    index += m_cursorX;
+
+    return index;
 }
 
 void Editor::move_cursor(int c) {
@@ -31,9 +60,11 @@ void Editor::move_cursor(int c) {
     std::string line = renderer_lines[m_cursorY];
     switch (c) {
         case (int) ARROW_UP: if (m_cursorY != 0) m_cursorY--; break;
-        case (int) ARROW_DOWN:  if (m_cursorY < renderer_lines.size()) m_cursorY++; break;
+        case (int) ARROW_DOWN:  if (m_cursorY < renderer_lines.size() - 1) m_cursorY++; break;
         case (int) ARROW_LEFT: 
-            if (m_cursorX != 0) m_cursorX--;
+            if (m_cursorX != 0) {
+                m_cursorX--;
+            }
             else if (m_cursorY > 0) {
                 m_cursorY--;
                 m_cursorX = line.size();
@@ -41,7 +72,9 @@ void Editor::move_cursor(int c) {
 
             break;
         case (int) ARROW_RIGHT: 
-            if (m_cursorX < line.size()) m_cursorX++;
+            if (m_cursorX < line.size()) {
+                m_cursorX++;
+            } 
             else if (m_cursorX == line.size()) {
                 m_cursorY++;
                 m_cursorX = 0;
@@ -56,21 +89,46 @@ void Editor::move_cursor(int c) {
     line = renderer_lines[m_cursorY];
     if (m_cursorX > line.size())
         m_cursorX = line.size();
+
+    g.go_to(pos());
 }
 
 constexpr int CTRL_KEY(int c) { return ((c) & 0x1f); }
 
 void Editor::process_key(int c) {
+    static int quit_times = 2;
+    m_status_msg = ""; // reset status msg on key press
     switch (c) { 
-        case CTRL_KEY('q'): 
+        case '\r':
+            g.insert_char('\n');
+            m_cursorX = 0;
+            m_cursorY++;
+            g.go_to(pos());
+            break;
+        case CTRL_KEY('q'):
+            if (dirty && quit_times > 0) {
+                m_status_msg = "WARNING!!! File has unsaved modifications. Ctrl+Q to quit without saving.";
+                quit_times --;
+                return;
+            }
+
             // Clear then reposition cursor
             write(STDOUT_FILENO, "\x1b[2J", 4);
             write(STDOUT_FILENO, "\x1b[H", 3);
             running = false;
             break;
 
+        case CTRL_KEY('s'):
+            save_file();
+            break;
+
+        case (int) BACK_SPACE:
+        case CTRL_KEY('h'):
         case (int) DEL_KEY: 
-            break; /* TODO */
+            g.erase();
+            move_cursor((int) ARROW_LEFT);
+            dirty = true;
+            break; 
         
         case (int) HOME_KEY:
             m_cursorX = 0;
@@ -102,15 +160,27 @@ void Editor::process_key(int c) {
         case (int) ARROW_LEFT:
         case (int) ARROW_RIGHT:
             move_cursor(c); break;
+
+        case CTRL_KEY('l'):
+        case '\x1b':
+            break;
+        
+        default:
+            g.insert_char(c); 
+            dirty = true;
+            m_cursorX++;
+            break;
     }
+
+    quit_times = 2;
 }
 
-void Editor::update_text_lines() {
+void Editor::update_text_lines(const std::string &t) {
     std::string r_curr, e_curr;
     renderer_lines.clear();
     editor_lines.clear();
 
-    for (char c : text) {
+    for (char c : t) {
         if (c == '\n') {
             renderer_lines.push_back(r_curr);
             editor_lines.push_back(e_curr);
@@ -176,8 +246,10 @@ void Editor::draw_status_bar(std::string & buf) {
     else {
         if (m_file_name == "")
             s = "[New]";
-        else
+        else {
             s = "[" + std::filesystem::path(m_file_name).filename().string() + "]";
+            if (dirty) s += "(modified)";
+        }
     }
 
     buf.append(s);
@@ -201,13 +273,29 @@ void Editor::draw() {
     draw_rows(append_buf);
     draw_status_bar(append_buf);
     std::string cmd = "\x1b[" + std::to_string(m_cursorY - m_row_offset + 1)
-     + ";" + std::to_string(m_cursorX - m_col_offset + 1) + "H";
+     + ";" + std::to_string(m_renderX - m_col_offset + 1) + "H";
     append_buf.append(cmd);
     append_buf.append("\x1b[?25h");
     write(STDOUT_FILENO, append_buf.c_str(), append_buf.size());
 }
 
+int Editor::cursor_to_renderX() {
+    int rx = 0;
+    for (int j = 0; j < m_cursorX; j++) {
+        if (editor_lines[m_cursorY][j] == '\t')
+            rx += (TAB_STOP - 1) - (rx % TAB_STOP);
+        ++rx; 
+    }
+
+    return rx;
+}
+
 void Editor::scroll() {
+    m_renderX = 0;
+
+    if (m_cursorY < t.rows()) {
+        m_renderX = cursor_to_renderX();
+    }
 
     // UP
     if (m_cursorY < m_row_offset)
@@ -218,10 +306,12 @@ void Editor::scroll() {
         m_row_offset = m_cursorY - t.rows() + 1;
 
     // Left
-    if (m_cursorX < m_col_offset)
-        m_col_offset = m_cursorX;
+    if (m_renderX < m_col_offset)
+        m_col_offset = m_renderX;
 
     // Right
-    if (m_cursorX >= m_col_offset + t.cols())
-        m_col_offset = m_cursorX - t.cols() + 1;
+    if (m_renderX >= m_col_offset + t.cols())
+        m_col_offset = m_renderX - t.cols() + 1;
+
+    g.go_to(pos());
 }

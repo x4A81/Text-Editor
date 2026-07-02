@@ -1,9 +1,9 @@
 #include "../include/editor.hpp"
 
-int main() {
+int main(int argc, char* argv[]) {
     Editor editor;
-    editor.open_file("../testfile.txt");
-    // editor.m_status_msg = "HELP!!!!! HELP!!!!";
+    if (argc > 1)
+        editor.open_file(argv[1]);
     editor.run();
     return 0;
 }
