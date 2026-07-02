@@ -57,7 +57,9 @@ size_t Editor::pos() {
 
 void Editor::move_cursor(int c) {
     // find row
-    std::string line = renderer_lines[m_cursorY];
+    std::string line;
+    if (m_cursorY < renderer_lines.size())
+        line = renderer_lines[m_cursorY];
     switch (c) {
         case (int) ARROW_UP: if (m_cursorY != 0) m_cursorY--; break;
         case (int) ARROW_DOWN:  if (m_cursorY < renderer_lines.size() - 1) m_cursorY++; break;
@@ -86,9 +88,11 @@ void Editor::move_cursor(int c) {
             break;
     }
 
-    line = renderer_lines[m_cursorY];
-    if (m_cursorX > line.size())
+    if (m_cursorY < renderer_lines.size()) {
+        line = renderer_lines[m_cursorY];
+        if (m_cursorX > line.size())
         m_cursorX = line.size();
+    }
 
     g.go_to(pos());
 }
@@ -144,14 +148,15 @@ void Editor::process_key(int c) {
                     m_cursorY = m_row_offset;
                 } else if (c == (int) PAGE_DOWN) {
                     m_cursorY = m_row_offset + t.rows() - 1;
-                    if (m_cursorY > m_row_offset) 
-                        m_cursorY = t.rows();
+                    if (m_cursorY > renderer_lines.size()) 
+                        m_cursorY = renderer_lines.size()-1;
                 }
 
                 int times = t.rows();
                 while (times--)
-                move_cursor(c == (int) PAGE_UP ? (int) ARROW_UP : (int) ARROW_DOWN);
+                    move_cursor(c == (int) PAGE_UP ? (int) ARROW_UP : (int) ARROW_DOWN);
             }
+
             break;
 
         // Move cursor
@@ -167,8 +172,8 @@ void Editor::process_key(int c) {
         
         default:
             g.insert_char(c); 
-            dirty = true;
             m_cursorX++;
+            dirty = true;
             break;
     }
 
@@ -293,7 +298,7 @@ int Editor::cursor_to_renderX() {
 void Editor::scroll() {
     m_renderX = 0;
 
-    if (m_cursorY < t.rows()) {
+    if (m_cursorY < editor_lines.size()) {
         m_renderX = cursor_to_renderX();
     }
 
