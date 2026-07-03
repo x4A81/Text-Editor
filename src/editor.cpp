@@ -20,6 +20,9 @@ const std::string colour_highlight(Highlight hl) {
 
     case NUMBER:
         return "\x1b[95m";
+
+    case MATCH:
+        return "\x1b[92m";
     
     default:
         break;
@@ -37,8 +40,8 @@ void Editor::run() {
     }
 }
 
-void Editor::open_file(const std::string file_name) {
-    m_file_name = file_name;
+void Editor::open_file(const std::string s) {
+    file_name = s;
     std::fstream file(file_name);
     if (!file.is_open()) throw std::runtime_error("file didn't open");
     std::stringstream buf;
@@ -49,8 +52,12 @@ void Editor::open_file(const std::string file_name) {
 }
 
 void Editor::save_file() {
-    if (m_file_name.empty()) m_file_name = "New file.txt";
-    std::ofstream file(m_file_name);
+    if (file_name.empty()) {
+        file_name = prompt("Save as: ");
+        if (file_name.empty()) file_name = "New file.txt";
+    }
+    
+    std::ofstream file(file_name);
     if (!file)
         throw std::runtime_error("file didn't open");
     std::string t = g.to_string();
@@ -58,17 +65,58 @@ void Editor::save_file() {
     if (!file)
         throw std::runtime_error("error writing file");
         
-    m_status_msg = std::to_string(t.size()) + " bytes written to disk.";
+    status_msg = std::to_string(t.size()) + " bytes written to disk.";
     dirty = false;
+}
+
+void Editor::find() {
+    std::string s = prompt("Find: ");
+
+    std::pair<int, int> position(-1, -1);
+    if (s.empty()) return;
+
+    for (int i = 0; i < editor_lines.size(); ++i) {
+        std::string r = editor_lines[i];
+        size_t match = r.find(s);
+        if (match != std::string::npos) {
+            position = {match, i};
+            status_msg = "Found!";
+            break;
+        }
+    }
+
+    if (position.first == -1) {
+        status_msg = "Not Found.";
+        return;
+    }
+
+    match_pos = position.first;
+    match_len = s.length();
+
+    while (position.second != cursorY) {
+        if (cursorY < position.second)
+            move_cursor((int) ARROW_DOWN);
+
+        if (cursorY > position.second)
+            move_cursor((int) ARROW_UP);
+    }
+
+    while (position.first != cursorX) {
+        if (cursorX < position.first)
+            move_cursor((int) ARROW_RIGHT);
+
+        if (cursorX > position.first)
+            move_cursor((int) ARROW_LEFT);
+    }
 }
 
 size_t Editor::pos() {
     size_t index = 0;
 
-    for (int i = 0; i < m_cursorY; ++i)
+    for (int i = 0; i < cursorY; ++i)
         index += editor_lines[i].size() + 1; // + '\n'
 
-    index += m_cursorX;
+    index += cursorX;
 
     return index;
 }
@@ -76,29 +124,29 @@ size_t Editor::pos() {
 void Editor::move_cursor(int c) {
     // find row
     std::string line;
-    if (m_cursorY < renderer_lines.size())
-        line = renderer_lines[m_cursorY];
+    if (cursorY < renderer_lines.size())
+        line = renderer_lines[cursorY];
     switch (c) {
-        case (int) ARROW_UP: if (m_cursorY != 0) m_cursorY--; break;
-        case (int) ARROW_DOWN:  if (m_cursorY < renderer_lines.size() - 1) m_cursorY++; break;
+        case (int) ARROW_UP: if (cursorY != 0) cursorY--; break;
+        case (int) ARROW_DOWN:  if (cursorY < renderer_lines.size() - 1) cursorY++; break;
         case (int) ARROW_LEFT: 
-            if (m_cursorX != 0) {
-                m_cursorX--;
+            if (cursorX != 0) {
+                cursorX--;
             }
-            else if (m_cursorY > 0) {
-                m_cursorY--;
-                m_cursorX = line.size();
+            else if (cursorY > 0) {
+                cursorY--;
+                cursorX = line.size();
             }
 
             break;
         case (int) ARROW_RIGHT: 
-            if (m_cursorX < line.size()) {
-                m_cursorX++;
+            if (cursorX < line.size()) {
+                cursorX++;
 
             } 
-            else if (m_cursorX == line.size() && m_cursorY < renderer_lines.size()-1) {
-                m_cursorY++;
-                m_cursorX = 0;
+            else if (cursorX == line.size() && cursorY < renderer_lines.size()-1) {
+                cursorY++;
+                cursorX = 0;
             }
 
             break;
@@ -107,10 +155,10 @@ void Editor::move_cursor(int c) {
             break;
     }
 
-    if (m_cursorY < renderer_lines.size()) {
-        line = renderer_lines[m_cursorY];
-        if (m_cursorX > line.size())
-        m_cursorX = line.size();
+    if (cursorY < renderer_lines.size()) {
+        line = renderer_lines[cursorY];
+        if (cursorX > line.size())
+        cursorX = line.size();
     }
 
     g.go_to(pos());
@@ -119,18 +167,19 @@ void Editor::move_cursor(int c) {
 constexpr int CTRL_KEY(int c) { return ((c) & 0x1f); }
 
 void Editor::process_key(int c) {
+    match_pos = -1;
     static int quit_times = 2;
-    m_status_msg = ""; // reset status msg on key press
+    status_msg = ""; // reset status msg on key press
     switch (c) { 
         case '\r':
             g.insert_char('\n');
-            m_cursorX = 0;
-            m_cursorY++;
+            cursorX = 0;
+            cursorY++;
             g.go_to(pos());
             break;
         case CTRL_KEY('q'):
             if (dirty && quit_times > 0) {
-                m_status_msg = "WARNING!!! File has unsaved modifications. Ctrl+Q to quit without saving.";
+                status_msg = "WARNING!!! File has unsaved modifications. Ctrl+Q to quit without saving.";
                 quit_times --;
                 return;
             }
@@ -145,6 +194,11 @@ void Editor::process_key(int c) {
             save_file();
             break;
 
+        case CTRL_KEY('f'):
+            find();
+            
+            break;
+
         case (int) BACK_SPACE:
         case CTRL_KEY('h'):
         case (int) DEL_KEY: 
@@ -154,21 +208,21 @@ void Editor::process_key(int c) {
             break; 
         
         case (int) HOME_KEY:
-            m_cursorX = 0;
+            cursorX = 0;
             break;
         case (int) END_KEY:
-            if (m_cursorY < renderer_lines.size()) m_cursorX = renderer_lines[m_cursorY].size();
+            if (cursorY < renderer_lines.size()) cursorX = renderer_lines[cursorY].size();
             break;
         
         case (int) PAGE_UP:
         case (int) PAGE_DOWN:
             {
                 if (c == (int) PAGE_UP) {
-                    m_cursorY = m_row_offset;
+                    cursorY = row_offset;
                 } else if (c == (int) PAGE_DOWN) {
-                    m_cursorY = m_row_offset + t.rows() - 1;
-                    if (m_cursorY > renderer_lines.size()) 
-                        m_cursorY = renderer_lines.size()-1;
+                    cursorY = row_offset + t.rows() - 1;
+                    if (cursorY > renderer_lines.size()) 
+                        cursorY = renderer_lines.size()-1;
                 }
 
                 int times = t.rows();
@@ -191,7 +245,7 @@ void Editor::process_key(int c) {
         
         default:
             g.insert_char(c); 
-            m_cursorX++;
+            cursorX++;
             dirty = true;
             break;
     }
@@ -205,7 +259,7 @@ void Editor::update_text_lines(const std::string &t) {
     renderer_lines.clear();
     editor_lines.clear();
     highlights.clear();
-
+    int count = 0;
     for (char c : t) {
         if (c == '\n') {
             h_curr.push_back(NORMAl);
@@ -215,22 +269,35 @@ void Editor::update_text_lines(const std::string &t) {
             r_curr.clear();
             e_curr.clear();
             h_curr.clear();
-        } else if (c == '\t') {
+        }
+        
+        else if (c == '\t') {
             int spaces = TAB_STOP - (r_curr.size() % TAB_STOP);
             r_curr.append(spaces, ' ');
             h_curr.insert(h_curr.end(), spaces, NORMAl);
             e_curr += c;
         } else if ('0' <= c && c <= '9') {
-            h_curr.push_back(NUMBER);
+            if (match_pos != -1 &&
+             (count >= match_pos && count < match_pos + match_len))
+                h_curr.push_back(MATCH);
+            else
+                h_curr.push_back(NUMBER);
+
             r_curr += c;
             e_curr += c;
         }
         
         else {
             r_curr += c;
-            h_curr.push_back(NORMAl);
+            if (match_pos != -1 &&
+             (count >= match_pos && count < match_pos + match_len))
+                h_curr.push_back(MATCH);
+            else
+                h_curr.push_back(NORMAl);
             e_curr += c;
         }
+
+        ++count;
     }
 
     renderer_lines.push_back(r_curr);
@@ -241,14 +308,16 @@ void Editor::update_text_lines(const std::string &t) {
 void Editor::draw_rows(std::string &buf) {
     int curr_line = 0;
     for (int y = 0; y < t.rows(); y++) {
-        curr_line = y + m_row_offset;
+        curr_line = y + row_offset;
         if (curr_line >= renderer_lines.size()) {
-            if (renderer_lines.empty() && y == t.rows() / 3) {
+            if (renderer_lines.size() == 1 && y == t.rows() / 3) {
                 std::string s = "Text editor -- version " + (std::string)VERSION;
                 if (s.size() > t.cols()) s.resize(t.cols());
                 size_t padding = (t.cols() - s.size()) / 2;
                 if (padding) {
-                    buf += '~';
+                    buf.append(colour_highlight(TILDE));
+                    buf.append("~");
+                    buf.append(colour_highlight(NORMAl));
                     --padding;
                 }
     
@@ -267,11 +336,11 @@ void Editor::draw_rows(std::string &buf) {
         } else {
             std::string line = renderer_lines[curr_line];
             std::vector<Highlight> hl = highlights[curr_line];
-            if (m_col_offset < line.size()) {
-                line = line.substr(m_col_offset);
+            if (col_offset < line.size()) {
+                line = line.substr(col_offset);
                 line.resize(t.cols());
                 for (size_t i = 0; i < line.size(); ++i) {
-                    size_t orig = i + m_col_offset;
+                    size_t orig = i + col_offset;
 
                     if (orig >= hl.size())
                         break;
@@ -292,13 +361,13 @@ void Editor::draw_status_bar(std::string & buf) {
     int i = 0;
     std::string s; 
     buf.append("\x1b[7m");
-    if (m_status_msg.size() > 0)
-        s = m_status_msg;
+    if (status_msg.size() > 0)
+        s = status_msg;
     else {
-        if (m_file_name == "")
+        if (file_name == "")
             s = "[New]";
         else {
-            s = "[" + std::filesystem::path(m_file_name).filename().string() + "]";
+            s = "[" + std::filesystem::path(file_name).filename().string() + "]";
             if (dirty) s += "(modified)";
         }
     }
@@ -326,17 +395,44 @@ void Editor::draw() {
     draw_rows(append_buf);
     draw_status_bar(append_buf);
 
-    std::string cmd = "\x1b[" + std::to_string(m_cursorY - m_row_offset + 1)
-     + ";" + std::to_string(m_renderX - m_col_offset + 1) + "H";
+    std::string cmd = "\x1b[" + std::to_string(cursorY - row_offset + 1)
+     + ";" + std::to_string(renderX - col_offset + 1) + "H";
     append_buf.append(cmd);
     append_buf.append("\x1b[?25h");
     write(STDOUT_FILENO, append_buf.c_str(), append_buf.size());
 }
 
+std::string Editor::prompt(const std::string &msg) {
+    std::string in;
+    while (true) {
+        status_msg = msg + in;
+        draw();
+        int c = t.read_key();
+        switch (c) {
+            case '\r':
+                return in;
+
+            case '\x1b':
+                return "";
+
+            case (int) BACK_SPACE:
+                if (!in.empty())
+                    in.pop_back();
+                break;
+
+            default:
+                if (isprint(c))
+                    in += (char)c;
+        }
+    }
+    
+    return std::string();
+}
+
 int Editor::cursor_to_renderX() {
     int rx = 0;
-    for (int j = 0; j < m_cursorX; j++) {
-        if (editor_lines[m_cursorY][j] == '\t')
+    for (int j = 0; j < cursorX; j++) {
+        if (editor_lines[cursorY][j] == '\t')
             rx += (TAB_STOP - 1) - (rx % TAB_STOP);
         ++rx; 
     }
@@ -345,27 +441,27 @@ int Editor::cursor_to_renderX() {
 }
 
 void Editor::scroll() {
-    m_renderX = 0;
+    renderX = 0;
 
-    if (m_cursorY < editor_lines.size()) {
-        m_renderX = cursor_to_renderX();
+    if (cursorY < editor_lines.size()) {
+        renderX = cursor_to_renderX();
     }
 
     // UP
-    if (m_cursorY < m_row_offset)
-        m_row_offset = m_cursorY;
+    if (cursorY < row_offset)
+        row_offset = cursorY;
 
     // Down
-    if (m_cursorY >= m_row_offset + t.rows())
-        m_row_offset = m_cursorY - t.rows() + 1;
+    if (cursorY >= row_offset + t.rows())
+        row_offset = cursorY - t.rows() + 1;
 
     // Left
-    if (m_renderX < m_col_offset)
-        m_col_offset = m_renderX;
+    if (renderX < col_offset)
+        col_offset = renderX;
 
     // Right
-    if (m_renderX >= m_col_offset + t.cols())
-        m_col_offset = m_renderX - t.cols() + 1;
+    if (renderX >= col_offset + t.cols())
+        col_offset = renderX - t.cols() + 1;
 
     g.go_to(pos());
 }

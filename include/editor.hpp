@@ -16,19 +16,15 @@ class Editor {
         void run();
 
         // opens a file to edit
-        void open_file(const std::string file_name);
+        void open_file(const std::string s);
 
         void save_file();
 
         Terminal t;
         Gap_Buffer g;
 
-        int cursorX() const { return m_cursorX; }
-        int cursorY() const { return m_cursorY; }
-        int row_offset() const { return m_row_offset; }
-
         std::string text;
-        std::string m_status_msg;
+        std::string status_msg;
 
         size_t pos();
         
@@ -39,16 +35,20 @@ class Editor {
         std::vector<std::vector<Highlight>> highlights;
         std::vector<std::string> editor_lines;
 
-        std::string m_file_name;
+        std::string file_name;
         bool running = false;
 
-        int m_cursorX = 0;
-        int m_renderX = 0;
-        int m_cursorY = 0;
+        int cursorX = 0;
+        int renderX = 0;
+        int cursorY = 0;
 
         // for scrolling
-        int m_row_offset = 0;
-        int m_col_offset = 0;
+        int row_offset = 0;
+        int col_offset = 0;
+
+        // for find()
+        int match_pos = -1;
+        int match_len = -1;
 
         // checks for specific key presses
         void process_key(int c);
@@ -60,6 +60,10 @@ class Editor {
         void draw_status_bar(std::string &buf);
         void draw_rows(std::string &buf);
         void draw();
+
+        std::string prompt(const std::string &msg);
+
+        void find();
 
         int cursor_to_renderX();
 

@@ -24,5 +24,6 @@ inline int keys_to_int(Keys key) {
 enum class Highlight {
     NORMAl,
     TILDE,
-    NUMBER
+    NUMBER,
+    MATCH
 };

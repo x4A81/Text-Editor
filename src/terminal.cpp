@@ -2,6 +2,7 @@
 #include "../include/globals.hpp"
 
 #include <stdexcept>
+
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <array>
@@ -9,13 +10,13 @@
 using enum Keys;
 
 void Terminal::size() {
-  struct winsize ws;
-  if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
-    throw std::runtime_error("failed to find window size");
-} else {
-    m_cols = ws.ws_col;
-    m_rows = ws.ws_row - 1; // Leave last row for status bar
-  }
+    struct winsize ws;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
+        throw std::runtime_error("failed to find window size");
+    } else {
+        m_cols = ws.ws_col;
+        m_rows = ws.ws_row - 1; // Leave last row for status bar
+    }
 }
 
 void Terminal::disable_raw() {
