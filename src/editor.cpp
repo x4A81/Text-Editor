@@ -1,6 +1,6 @@
 #include "../include/editor.hpp"
 #include "../include/gap_buffer.hpp"
-#include <unistd.h>
+
 #include <stdexcept>
 #include <fstream>
 #include <sstream>
@@ -185,8 +185,8 @@ void Editor::process_key(int c) {
             }
 
             // Clear then reposition cursor
-            write(STDOUT_FILENO, "\x1b[2J", 4);
-            write(STDOUT_FILENO, "\x1b[H", 3);
+            t.terminal_write("\x1b[2J");
+            t.terminal_write("\x1b[H");
             running = false;
             break;
 
@@ -399,7 +399,7 @@ void Editor::draw() {
      + ";" + std::to_string(renderX - col_offset + 1) + "H";
     append_buf.append(cmd);
     append_buf.append("\x1b[?25h");
-    write(STDOUT_FILENO, append_buf.c_str(), append_buf.size());
+    t.terminal_write(append_buf);
 }
 
 std::string Editor::prompt(const std::string &msg) {

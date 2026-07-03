@@ -93,3 +93,7 @@ int Terminal::read_key() {
 
     return '\x1b';
 }
+
+void Terminal::terminal_write(const std::string &s) {
+    write(STDOUT_FILENO, s.c_str(), s.length());
+}
