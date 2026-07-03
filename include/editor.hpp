@@ -36,6 +36,7 @@ class Editor {
         bool dirty = false; // true if unsaved modifications
         
         std::vector<std::string> renderer_lines;
+        std::vector<std::vector<Highlight>> highlights;
         std::vector<std::string> editor_lines;
 
         std::string m_file_name;

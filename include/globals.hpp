@@ -20,3 +20,9 @@ enum class Keys : int {
 inline int keys_to_int(Keys key) {
     return static_cast<int>(key);
 }
+
+enum class Highlight {
+    NORMAl,
+    TILDE,
+    NUMBER
+};

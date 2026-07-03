@@ -8,10 +8,28 @@
 #include <filesystem>
 
 using enum Keys;
+using enum Highlight;
+
+const std::string colour_highlight(Highlight hl) {
+    switch (hl) {
+    case TILDE:
+        return "\x1b[91m";
+
+    case NORMAl:
+        return "\x1b[m";
+
+    case NUMBER:
+        return "\x1b[95m";
+    
+    default:
+        break;
+    }
+
+    return "";
+}
 
 void Editor::run() {
     running = true;
-    g.go_to(0);
     while (running) {
         update_text_lines(g.to_string());
         draw();
@@ -76,8 +94,9 @@ void Editor::move_cursor(int c) {
         case (int) ARROW_RIGHT: 
             if (m_cursorX < line.size()) {
                 m_cursorX++;
+
             } 
-            else if (m_cursorX == line.size()) {
+            else if (m_cursorX == line.size() && m_cursorY < renderer_lines.size()-1) {
                 m_cursorY++;
                 m_cursorX = 0;
             }
@@ -182,29 +201,41 @@ void Editor::process_key(int c) {
 
 void Editor::update_text_lines(const std::string &t) {
     std::string r_curr, e_curr;
+    std::vector<Highlight> h_curr;
     renderer_lines.clear();
     editor_lines.clear();
+    highlights.clear();
 
     for (char c : t) {
         if (c == '\n') {
+            h_curr.push_back(NORMAl);
             renderer_lines.push_back(r_curr);
             editor_lines.push_back(e_curr);
+            highlights.push_back(h_curr);
             r_curr.clear();
             e_curr.clear();
+            h_curr.clear();
         } else if (c == '\t') {
             int spaces = TAB_STOP - (r_curr.size() % TAB_STOP);
             r_curr.append(spaces, ' ');
+            h_curr.insert(h_curr.end(), spaces, NORMAl);
+            e_curr += c;
+        } else if ('0' <= c && c <= '9') {
+            h_curr.push_back(NUMBER);
+            r_curr += c;
             e_curr += c;
         }
         
         else {
             r_curr += c;
+            h_curr.push_back(NORMAl);
             e_curr += c;
         }
     }
 
     renderer_lines.push_back(r_curr);
     editor_lines.push_back(e_curr);
+    highlights.push_back(h_curr);
 }
 
 void Editor::draw_rows(std::string &buf) {
@@ -224,15 +255,30 @@ void Editor::draw_rows(std::string &buf) {
                 buf.append(padding, ' ');
                 buf.append(s);
             } else {
+                buf.append(colour_highlight(TILDE));
                 buf.append("~");
+                buf.append(colour_highlight(NORMAl));
             }
 
+        } else if (g.to_string().empty() && curr_line == 0) {
+            buf.append(colour_highlight(TILDE));
+            buf.append("~");
+            buf.append(colour_highlight(NORMAl));
         } else {
             std::string line = renderer_lines[curr_line];
+            std::vector<Highlight> hl = highlights[curr_line];
             if (m_col_offset < line.size()) {
                 line = line.substr(m_col_offset);
                 line.resize(t.cols());
-                buf.append(line);
+                for (size_t i = 0; i < line.size(); ++i) {
+                    size_t orig = i + m_col_offset;
+
+                    if (orig >= hl.size())
+                        break;
+
+                    buf += colour_highlight(hl[orig]);
+                    buf += line[i];
+                }
             }
         }
 
@@ -271,12 +317,15 @@ void Editor::draw() {
 
     std::string append_buf = "\0";
 
+    // change cursor type to blinking bar
+    append_buf.append("\x1b[5 q");
     // reposition cursor
     append_buf.append("\x1b[?25l");
     append_buf.append("\x1b[H");
 
     draw_rows(append_buf);
     draw_status_bar(append_buf);
+
     std::string cmd = "\x1b[" + std::to_string(m_cursorY - m_row_offset + 1)
      + ";" + std::to_string(m_renderX - m_col_offset + 1) + "H";
     append_buf.append(cmd);
