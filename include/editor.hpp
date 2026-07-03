@@ -47,7 +47,8 @@ class Editor {
         int col_offset = 0;
 
         // for find()
-        int match_pos = -1;
+        int match_posX = -1;
+        int match_posY = -1;
         int match_len = -1;
 
         // checks for specific key presses
@@ -64,6 +65,8 @@ class Editor {
         std::string prompt(const std::string &msg);
 
         void find();
+        bool find_prev(const std::string &s);
+        bool find_next(const std::string &s);
 
         int cursor_to_renderX();
 

@@ -69,43 +69,74 @@ void Editor::save_file() {
     dirty = false;
 }
 
-void Editor::find() {
-    std::string s = prompt("Find: ");
-
-    std::pair<int, int> position(-1, -1);
-    if (s.empty()) return;
-
-    for (int i = 0; i < editor_lines.size(); ++i) {
+bool Editor::find_next(const std::string &s) {
+    for (int i = cursorY; i < editor_lines.size(); ++i) {
         std::string r = editor_lines[i];
         size_t match = r.find(s);
         if (match != std::string::npos) {
-            position = {match, i};
+            match_posX = match;
+            match_posY = i;
+            match_len = s.length();
             status_msg = "Found!";
             break;
         }
     }
-
-    if (position.first == -1) {
-        status_msg = "Not Found.";
-        return;
+    
+    if (match_posX == -1) {
+        return false;
     }
 
-    match_pos = position.first;
-    match_len = s.length();
+    return true;
+}
 
-    while (position.second != cursorY) {
-        if (cursorY < position.second)
+bool Editor::find_prev(const std::string &s) {
+    for (int i = cursorY; i >= 0; --i) {
+        std::string r = editor_lines[i];
+        size_t match = r.find(s);
+        if (match != std::string::npos) {
+            match_posX = match;
+            match_posY = i;
+            match_len = s.length();
+            status_msg = "Found!";
+            break;
+        }
+    }
+    
+    if (match_posX == -1) {
+        return false;
+    }
+
+    return true;
+}
+
+
+
+void Editor::find() {
+    std::string s = prompt("Find: ");
+
+    
+    if (s.empty()) return;
+
+    if (!find_next(s)) {
+        if (!find_prev(s)) {
+            status_msg = "Not Found.";
+            return;
+        }
+    }
+
+    while (match_posY != cursorY) {
+        if (cursorY < match_posY)
             move_cursor((int) ARROW_DOWN);
 
-        if (cursorY > position.second)
+        if (cursorY > match_posY)
             move_cursor((int) ARROW_UP);
     }
 
-    while (position.first != cursorX) {
-        if (cursorX < position.first)
+    while (match_posX != cursorX) {
+        if (cursorX < match_posX)
             move_cursor((int) ARROW_RIGHT);
 
-        if (cursorX > position.first)
+        if (cursorX > match_posX)
             move_cursor((int) ARROW_LEFT);
     }
 }
@@ -167,7 +198,7 @@ void Editor::move_cursor(int c) {
 constexpr int CTRL_KEY(int c) { return ((c) & 0x1f); }
 
 void Editor::process_key(int c) {
-    match_pos = -1;
+    match_posX = -1;
     static int quit_times = 2;
     status_msg = ""; // reset status msg on key press
     switch (c) { 
@@ -259,7 +290,8 @@ void Editor::update_text_lines(const std::string &t) {
     renderer_lines.clear();
     editor_lines.clear();
     highlights.clear();
-    int count = 0;
+    int line = 0;
+    int x = 0;
     for (char c : t) {
         if (c == '\n') {
             h_curr.push_back(NORMAl);
@@ -269,6 +301,8 @@ void Editor::update_text_lines(const std::string &t) {
             r_curr.clear();
             e_curr.clear();
             h_curr.clear();
+            line++;
+            x = 0;
         }
         
         else if (c == '\t') {
@@ -277,8 +311,8 @@ void Editor::update_text_lines(const std::string &t) {
             h_curr.insert(h_curr.end(), spaces, NORMAl);
             e_curr += c;
         } else if ('0' <= c && c <= '9') {
-            if (match_pos != -1 &&
-             (count >= match_pos && count < match_pos + match_len))
+            if (match_posX != -1 &&
+             (line == match_posY && x > match_posX && x <= match_posX + match_len))
                 h_curr.push_back(MATCH);
             else
                 h_curr.push_back(NUMBER);
@@ -289,15 +323,15 @@ void Editor::update_text_lines(const std::string &t) {
         
         else {
             r_curr += c;
-            if (match_pos != -1 &&
-             (count >= match_pos && count < match_pos + match_len))
+            if (match_posX != -1 &&
+                (line == match_posY && x > match_posX && x <= match_posX + match_len))
                 h_curr.push_back(MATCH);
             else
                 h_curr.push_back(NORMAl);
             e_curr += c;
         }
-
-        ++count;
+        
+        x++;
     }
 
     renderer_lines.push_back(r_curr);
