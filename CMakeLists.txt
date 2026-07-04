@@ -1,15 +1,15 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(editor VERSION 1.0 LANGUAGES CXX)
+project(pen VERSION 1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_executable(editor src/main.cpp src/editor.cpp src/terminal.cpp src/gap_buffer.cpp)
-target_include_directories(editor PRIVATE include)
+add_executable(pen src/main.cpp src/editor.cpp src/terminal.cpp src/gap_buffer.cpp)
+target_include_directories(pen PRIVATE include)
 
 if (MINGW)
-    target_link_options(editor PRIVATE
+    target_link_options(pen PRIVATE
         -static
         -static-libgcc
         -static-libstdc++
