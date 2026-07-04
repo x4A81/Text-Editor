@@ -1,5 +1,5 @@
-#include "../include/editor.hpp"
-#include "../include/gap_buffer.hpp"
+#include "editor.hpp"
+#include "gap_buffer.hpp"
 
 #include <stdexcept>
 #include <fstream>

@@ -1,15 +1,29 @@
-#include "../include/terminal.hpp"
-#include "../include/globals.hpp"
+#include "terminal.hpp"
+#include "globals.hpp"
 
 #include <stdexcept>
-
-#include <sys/ioctl.h>
-#include <unistd.h>
 #include <array>
+
+#ifdef _WIN32
+    #include <windows.h>
+    #include <conio.h>
+#else
+    #include <sys/ioctl.h>
+    #include <unistd.h>
+#endif
 
 using enum Keys;
 
 void Terminal::size() {
+#ifdef _WIN32
+
+    CONSOLE_SCREEN_BUFFER_INFO info;
+    GetConsoleScreenBufferInfo(hOut, &info);
+
+    m_cols = info.srWindow.Right - info.srWindow.Left + 1;
+    m_rows = info.srWindow.Bottom - info.srWindow.Top;
+
+#else
     struct winsize ws;
     if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
         throw std::runtime_error("failed to find window size");
@@ -17,14 +31,44 @@ void Terminal::size() {
         m_cols = ws.ws_col;
         m_rows = ws.ws_row - 1; // Leave last row for status bar
     }
+#endif
 }
 
 void Terminal::disable_raw() {
+#ifdef _WIN32
+
+    SetConsoleMode(hIn, originalInMode);
+    SetConsoleMode(hOut, originalOutMode);
+
+#else
     if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &original) == -1) 
         throw std::runtime_error("failed to set attribute");
+#endif
 }
 
 void Terminal::enable_raw() {
+#ifdef _WIN32
+
+    hIn = GetStdHandle(STD_INPUT_HANDLE);
+    hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+
+    GetConsoleMode(hIn, &originalInMode);
+    GetConsoleMode(hOut, &originalOutMode);
+
+    DWORD inMode = originalInMode;
+    inMode &= ~(ENABLE_LINE_INPUT |
+                ENABLE_ECHO_INPUT |
+                ENABLE_PROCESSED_INPUT);
+
+    SetConsoleMode(hIn, inMode);
+
+    DWORD outMode = originalOutMode;
+    outMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+
+    if (!SetConsoleMode(hOut, outMode))
+        throw std::runtime_error("Failed to enable VT mode");
+
+#else
     if (tcgetattr(STDIN_FILENO, &original) == -1)
         throw std::runtime_error("failed to set attribute");
 
@@ -38,9 +82,36 @@ void Terminal::enable_raw() {
     raw.c_cc[VTIME] = 1;
     if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1)
         throw std::runtime_error("failed to set attribute");
+#endif
 }
 
 int Terminal::read_key() {
+#ifdef _WIN32
+
+    int c = _getch();
+
+    if (c == 0 || c == 224) {
+        c = _getch();
+
+        switch (c) {
+            case 72: return (int)ARROW_UP;
+            case 80: return (int)ARROW_DOWN;
+            case 75: return (int)ARROW_LEFT;
+            case 77: return (int)ARROW_RIGHT;
+
+            case 71: return (int)HOME_KEY;
+            case 79: return (int)END_KEY;
+
+            case 73: return (int)PAGE_UP;
+            case 81: return (int)PAGE_DOWN;
+
+            case 83: return (int)DEL_KEY;
+        }
+    }
+
+    return c;
+
+#else
     int nread;
     char c;
     while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
@@ -92,8 +163,19 @@ int Terminal::read_key() {
     }
 
     return '\x1b';
+#endif
 }
 
 void Terminal::terminal_write(const std::string &s) {
-    write(STDOUT_FILENO, s.c_str(), s.length());
+#ifdef _WIN32
+    DWORD written;
+    WriteFile(
+        GetStdHandle(STD_OUTPUT_HANDLE),
+        s.data(),
+        static_cast<DWORD>(s.size()),
+        &written,
+        nullptr);
+#else
+    write(STDOUT_FILENO, s.c_str(), s.size());
+#endif
 }

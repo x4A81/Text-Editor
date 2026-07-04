@@ -6,3 +6,12 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(editor src/main.cpp src/editor.cpp src/terminal.cpp src/gap_buffer.cpp)
+target_include_directories(editor PRIVATE include)
+
+if (MINGW)
+    target_link_options(editor PRIVATE
+        -static
+        -static-libgcc
+        -static-libstdc++
+    )
+endif()

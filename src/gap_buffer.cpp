@@ -1,4 +1,4 @@
-#include "../include/gap_buffer.hpp"
+#include "gap_buffer.hpp"
 
 
 void Gap_Buffer::insert_char(char c) {

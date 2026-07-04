@@ -1,4 +1,4 @@
-#include "../include/editor.hpp"
+#include "editor.hpp"
 
 int main(int argc, char* argv[]) {
     Editor editor;
